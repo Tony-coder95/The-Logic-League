@@ -1,3 +1,4 @@
+#include <oci.h>
 #include <FL/Fl.H>
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Input.H>
@@ -11,6 +12,8 @@
 #include <FL/Fl_File_Chooser.H>
 #include <FL/Fl_Box.H>
 #include <cstdlib> // Include for exit()
+#include <string>  // Include for std::string
+
 
 // Callback for predefined queries
 void predefinedQueryCallback(Fl_Widget* widget, void* data) {
@@ -23,8 +26,63 @@ void predefinedQueryCallback(Fl_Widget* widget, void* data) {
 void runQueryCallback(Fl_Widget* widget, void* data) {
     Fl_Text_Display* output = static_cast<Fl_Text_Display*>(data);
     Fl_Text_Buffer* buffer = output->buffer();
-    buffer->text("Query executed! Displaying results...");
-    // Add logic to connect to the database and display query results
+
+    // Oracle DB Connection Logic
+    OCIEnv* envhp;
+    OCIError* errhp;
+    OCISvcCtx* svchp;
+    OCIServer* srvhp;
+    OCISession* authp;
+
+    // Initialize OCI environment
+    if (OCIEnvCreate(&envhp, OCI_DEFAULT, nullptr, nullptr, nullptr, nullptr, 0, nullptr) != OCI_SUCCESS) {
+        buffer->text("Failed to initialize Oracle environment.");
+        return;
+    }
+
+    OCIHandleAlloc(envhp, (void**)&errhp, OCI_HTYPE_ERROR, 0, nullptr);
+
+    OCIHandleAlloc(envhp, (void**)&srvhp, OCI_HTYPE_SERVER, 0, nullptr);
+    if (OCIServerAttach(srvhp, errhp, (OraText*)"oracle.cise.ufl.edu:1521/orcl", strlen("oracle.cise.ufl.edu:1521/orcl"), OCI_DEFAULT) != OCI_SUCCESS) {
+        char errbuf[512];
+        sb4 errcode;
+        OCIErrorGet(errhp, 1, NULL, &errcode, (OraText*)errbuf, sizeof(errbuf), OCI_HTYPE_ERROR);
+        std::string errorMessage = "Failed to attach to Oracle server: ";
+        errorMessage += errbuf; // Append the specific error message
+        buffer->text(errorMessage.c_str());
+        return;
+    }
+
+    OCIHandleAlloc(envhp, (void**)&svchp, OCI_HTYPE_SVCCTX, 0, nullptr);
+    OCIAttrSet(svchp, OCI_HTYPE_SVCCTX, srvhp, 0, OCI_ATTR_SERVER, errhp);
+
+    OCIHandleAlloc(envhp, (void**)&authp, OCI_HTYPE_SESSION, 0, nullptr);
+    OCIAttrSet(authp, OCI_HTYPE_SESSION, (void*)"emolinalinares@ufl.edu", strlen("emolinalinares@ufl.edu"), OCI_ATTR_USERNAME, errhp);
+    OCIAttrSet(authp, OCI_HTYPE_SESSION, (void*)"Bv0AtmHX5QWPDxevm0vuAIOl", strlen("Bv0AtmHX5QWPDxevm0vuAIOl"), OCI_ATTR_PASSWORD, errhp);
+
+    if (OCISessionBegin(svchp, errhp, authp, OCI_CRED_RDBMS, OCI_DEFAULT) != OCI_SUCCESS) {
+        buffer->text("Failed to start Oracle session.");
+        OCIHandleFree(authp, OCI_HTYPE_SESSION);
+        OCIHandleFree(svchp, OCI_HTYPE_SVCCTX);
+        OCIHandleFree(srvhp, OCI_HTYPE_SERVER);
+        OCIHandleFree(errhp, OCI_HTYPE_ERROR);
+        OCIHandleFree(envhp, OCI_HTYPE_ENV);
+        return;
+    }
+
+    OCIAttrSet(svchp, OCI_HTYPE_SVCCTX, authp, 0, OCI_ATTR_SESSION, errhp);
+
+    // Placeholder for query execution
+    buffer->text("Connected to Oracle Database successfully!");
+
+    // Cleanup
+    OCISessionEnd(svchp, errhp, authp, OCI_DEFAULT);
+    OCIServerDetach(srvhp, errhp, OCI_DEFAULT);
+    OCIHandleFree(authp, OCI_HTYPE_SESSION);
+    OCIHandleFree(svchp, OCI_HTYPE_SVCCTX);
+    OCIHandleFree(srvhp, OCI_HTYPE_SERVER);
+    OCIHandleFree(errhp, OCI_HTYPE_ERROR);
+    OCIHandleFree(envhp, OCI_HTYPE_ENV);
 }
 
 // Callback for saving results to a file
@@ -86,27 +144,13 @@ int main() {
     input->labelcolor(fl_rgb_color(0, 113, 206)); // Blue label
     input->textsize(14);
 
-// Output Display
-Fl_Text_Buffer* textbuf = new Fl_Text_Buffer();
-Fl_Text_Display* output = new Fl_Text_Display(50, 130, 700, 200);
-output->buffer(textbuf);
-output->textsize(14);
-output->textcolor(fl_rgb_color(0, 113, 206)); // Blue text
-output->color(FL_WHITE);                      // Set background to white
-
-// Table for displaying query results
-Fl_Table* resultTable = new Fl_Table(50, 350, 700, 200, "Results:");
-resultTable->rows(5);   // Set rows
-resultTable->cols(3);   // Set columns
-resultTable->col_header(1);
-resultTable->row_header(1);
-resultTable->col_header_color(fl_rgb_color(0, 113, 206));  // Blue header
-resultTable->row_header_color(fl_rgb_color(0, 113, 206));  // Blue header
-resultTable->color(FL_WHITE);                              // White background
-resultTable->box(FL_FLAT_BOX);
-resultTable->labelsize(14);                                // Set label size
-resultTable->align(FL_ALIGN_TOP);                          // Align label
-resultTable->end();
+    // Output Display
+    Fl_Text_Buffer* textbuf = new Fl_Text_Buffer();
+    Fl_Text_Display* output = new Fl_Text_Display(50, 130, 700, 200);
+    output->buffer(textbuf);
+    output->textsize(14);
+    output->textcolor(fl_rgb_color(0, 113, 206)); // Blue text
+    output->color(FL_WHITE);                      // Set background to white
 
     // Run Query Button
     Fl_Button* runButton = new Fl_Button(50, 550, 100, 30, "Run Query");
@@ -131,4 +175,3 @@ resultTable->end();
     window->show();
 
     return Fl::run();
-}
